@@ -28,6 +28,20 @@ NoInit.    Item ::= Ident ;
 
 Init.      Item ::= Ident "=" Expr ;
 
+UnpackDecl. Stmt ::= "(" [Unpack] ")" "=" Expr ;
+
+UnpackItem. Unpack ::= Arg ;
+
+UnpackRec. Unpack ::= "(" [Unpack] ")" ;
+
+Break.     Stmt ::= "break" ;
+
+Continue.  Stmt ::= "continue" ;
+
+Yield.    Stmt ::= "yield" Expr ;
+
+separator  nonempty Unpack "," ;
+
 separator nonempty Item "," ;
 
 Ass.       Stmt ::= Ident "=" Expr  ";" ;
@@ -46,7 +60,11 @@ CondElse.  Stmt ::= "if" "(" Expr ")" Stmt "else" Stmt  ;
 
 While.     Stmt ::= "while" "(" Expr ")" Stmt ;
 
+For.       Stmt ::= "for" Arg "in" Expr Block; 
+
 SExp.      Stmt ::= Expr  ";" ;
+
+Print.     Stmt ::= "print" "(" Expr ")" ;
 
 -- Types ---------------------------------------------------
 
@@ -58,11 +76,21 @@ Bool.      Type ::= "boolean" ;
 
 Void.      Type ::= "void" ;
 
-internal   Fun. Type ::= Type "(" [Type] ")" ;
+Arr.       Type ::= Type "[]" ;
+
+Tuple.     Type ::= "(" [Type] ")" ;
+
+Fun. Type ::= Type "(" [Type] ")" ;
 
 separator  Type "," ;
 
 -- Expressions ---------------------------------------------
+
+EArr.      Expr6 ::= "[" [Expr] "]" ;
+
+ETuple.    Expr6 ::= "(" [Expr] ")" ;
+
+ELambda.   Expr6 ::= "(" [Arg] ")" "=>" Block ; 
 
 EVar.      Expr6 ::= Ident ;
 
@@ -73,6 +101,8 @@ ELitTrue.  Expr6 ::= "true" ;
 ELitFalse. Expr6 ::= "false" ;
 
 EApp.      Expr6 ::= Ident "(" [Expr] ")" ;
+
+Next.      Expr6 ::= "next" "(" Expr ")" ;
 
 EString.   Expr6 ::= String ;
 
