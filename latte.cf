@@ -28,6 +28,12 @@ NoInit.    Item ::= Ident ;
 
 Init.      Item ::= Ident "=" Expr ;
 
+Break.     Stmt ::= "break" ;
+
+Continue.  Stmt ::= "continue" ;
+
+Yield.     Stmt ::= "yield" "(" Expr ")" ;
+
 separator nonempty Item "," ;
 
 Ass.       Stmt ::= Ident "=" Expr  ";" ;
@@ -46,7 +52,11 @@ CondElse.  Stmt ::= "if" "(" Expr ")" Stmt "else" Stmt  ;
 
 While.     Stmt ::= "while" "(" Expr ")" Stmt ;
 
+For.       Stmt ::= "for" Arg "in" Expr Block; 
+
 SExp.      Stmt ::= Expr  ";" ;
+
+Print.     Stmt ::= "print" "(" Expr ")" ;
 
 -- Types ---------------------------------------------------
 
@@ -58,11 +68,17 @@ Bool.      Type ::= "boolean" ;
 
 Void.      Type ::= "void" ;
 
-internal   Fun. Type ::= Type "(" [Type] ")" ;
+Arr.       Type ::= Type "[]" ;
 
-separator  Type "," ;
+Fun. Type ::= Type "(" [Type] ")" ;
+
+separator nonempty Type "," ;
 
 -- Expressions ---------------------------------------------
+
+EArr.      Expr6 ::= "[" [Expr] "]" ;
+
+ELambda.   Expr6 ::= "(" [Arg] ")" "=>" Block ; 
 
 EVar.      Expr6 ::= Ident ;
 
@@ -73,6 +89,8 @@ ELitTrue.  Expr6 ::= "true" ;
 ELitFalse. Expr6 ::= "false" ;
 
 EApp.      Expr6 ::= Ident "(" [Expr] ")" ;
+
+Next.      Expr6 ::= "next" "(" Expr ")" ;
 
 EString.   Expr6 ::= String ;
 
@@ -92,7 +110,7 @@ EOr.       Expr ::= Expr1 "||" Expr ;
 
 coercions  Expr 6 ;
 
-separator  Expr "," ;
+separator Expr "," ;
 
 -- operators -----------------------------------------------
 
