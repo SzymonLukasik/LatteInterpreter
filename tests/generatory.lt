@@ -1,0 +1,32 @@
+void generator(int n) {
+    int suma = 0;
+    while (suma < n)
+    {
+        suma = suma + 2*i+1;
+        yield(suma);
+    }
+}
+        
+void main(){
+    print("Pierwsze generowanie");   
+    for int k in generator(10)
+    {
+        print(k);
+    }
+        
+    print("Drugie generowanie");
+    g = generator(3);
+    while (True)
+    {
+        if (hasnext(g))
+        {
+            k = next(g);
+            print(k);
+        }
+        else
+        {
+            break;
+        }
+    }
+    print("Koniec");
+}
