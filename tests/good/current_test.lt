@@ -1,0 +1,28 @@
+void main() {
+    {}
+
+    print("LOL");
+
+    int a;
+    print(a);
+
+    int b = 10, c = 1;
+    print(b);
+    print(c);
+
+    boolean t = true, f = false;
+    boolean res = !true && (t || f);
+    print(res);
+
+    int res = b * c / 5 + c - 1000 / 10;
+    print(res);
+
+    
+    boolean res = b < c;
+    boolean res = b <= c;
+    boolean res = b > c;
+    boolean res = b >= c;
+    boolean res = b == c;
+    boolean res = b != c;
+    print(res);
+}

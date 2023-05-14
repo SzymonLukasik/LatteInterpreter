@@ -70,7 +70,7 @@ Void.      Type ::= "void" ;
 
 Arr.       Type ::= Type "[]" ;
 
-Fun. Type ::= Type "(" [Type] ")" ;
+Fn.        Type ::= Type "(" [Type] ")" ;
 
 separator nonempty Type "," ;
 

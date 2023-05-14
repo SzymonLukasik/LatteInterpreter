@@ -14,11 +14,12 @@ import           ParLatte
 import           PrintLatte
 import           SkelLatte
 
+import           TypeChecker
+
 import           Interpreter
 
 
 import           ErrM
-import Interpreter (runProgram)
 
 type ParseFun = [Token] -> ErrM.Err Program
 
@@ -37,7 +38,9 @@ run _ _ [] = exitSuccess
 run v p s = let ts = myLLexer s in case p ts of
            Bad s    -> do putStrLn "\nParse failed...\n"
                           exitFailure
-           Ok  tree -> runProgram tree
+           Ok  tree -> case runTypeCheckProgram tree of
+                            Left error -> putStrLn error
+                            Right _ -> runEvalProgram tree
 
           --  Ok  tree -> case runTypecheck initTCMEnv tree of
           --                   Left error ->  pprintTypecheckerErrorMsg error

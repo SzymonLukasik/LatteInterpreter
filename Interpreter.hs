@@ -6,11 +6,16 @@ module Interpreter where
 import Data.Maybe (fromJust, isNothing)
 import Data.Map
 import Control.Monad (when)
+import Control.Monad.Reader
 import Control.Monad.RWS.Lazy
 import Control.Monad.Except
 import qualified AbsLatte
 import qualified Data.IntMap as Map
-import AbsLatte (Expr(ELambda))
+import AbsLatte (Type)
+
+import TypeChecker
+
+import Common
 
 type Loc = Int
 
@@ -48,11 +53,15 @@ data FnDef = FnDef AbsLatte.Type [AbsLatte.Arg] AbsLatte.Block deriving (Show)
 
 type Eval = ExceptT String (RWS Env [String] Store)
 
+data RetType = Break | Continue | Return Val
+
+type RetVal = Maybe RetType
+
 runEval :: Env -> Store -> Eval a -> (Either String a, Store, [String])
 runEval env store eval = runRWS (runExceptT eval) env store
 
-runProgram :: AbsLatte.Program -> IO ()
-runProgram program = do
+runEvalProgram :: AbsLatte.Program -> IO ()
+runEvalProgram program = do
     let (result, _, output) = runEval initEnv initStore (evalProgram program)
     case result of
         Left err -> putStrLn err
@@ -77,8 +86,8 @@ evalTopDefs (df:dfs) = do
     local (const env) (evalTopDefs dfs)
 
 evalTopDef :: AbsLatte.TopDef -> Eval Env
-evalTopDef (AbsLatte.FnDef retType ident args (AbsLatte.Block stmts)) = do
-    let fnDef = FnDef retType args (AbsLatte.Block stmts)
+evalTopDef (AbsLatte.FnDef retType ident args block) = do
+    let fnDef = FnDef retType args block
     env <- ask
     newLoc <- newLoc
     let newEnv = Env $ insert ident newLoc (_env env)
@@ -94,13 +103,12 @@ evalStmts (stmt:stmts) = do
 evalStmt :: AbsLatte.Stmt -> Eval Env
 evalStmt stmt = if isDeclStmt stmt then evalDeclStmt stmt else evalNonDeclStmt stmt >> ask
 
-isDeclStmt :: AbsLatte.Stmt -> Bool
-isDeclStmt (AbsLatte.Decl _ _) = True
-isDeclStmt _ = False
-
 evalNonDeclStmt :: AbsLatte.Stmt -> Eval ()
 evalNonDeclStmt AbsLatte.Empty = return ()
 evalNonDeclStmt (AbsLatte.BStmt (AbsLatte.Block stmts) ) = evalStmts stmts
+evalNonDeclStmt (AbsLatte.Print expr) = do
+    val <- evalExpr expr
+    tell [show val]
 
 evalDeclStmt :: AbsLatte.Stmt -> Eval Env
 evalDeclStmt (AbsLatte.Decl _ items) = evalItems items
@@ -127,7 +135,7 @@ evalExpr (AbsLatte.ELitInt int) = return $ IntV int
 evalExpr AbsLatte.ELitTrue = return $ BoolV True
 evalExpr AbsLatte.ELitFalse = return $ BoolV False
 evalExpr (AbsLatte.EString str) = return $ StrV str
-evalExpr (AbsLatte.ELambda args block) = FnV (FnDef AbsLatte.Void args block) <$> ask
+evalExpr (AbsLatte.ELambda args block) = asks (FnV (FnDef AbsLatte.Void args block))
 -- evalExpr (AbsLatte.EApp ident exprs) = do
 --     ~(FnV (FnDef retType args (AbsLatte.Block stmts)) fnEnv) <- getVarVal ident
 --     vals <- mapM evalExpr exprs
@@ -140,32 +148,57 @@ evalExpr (AbsLatte.ELambda args block) = FnV (FnDef AbsLatte.Void args block) <$
 --         AbsLatte.Void -> IntV 0
 --         _ -> error "Unknown return type"
 
-evalExpr (AbsLatte.Neg expr) = do
-    val <- evalExpr expr
-    case val of
-        IntV int -> return $ IntV (-int)
-        _ -> throwError "Negating non-integer value"
-
 evalExpr (AbsLatte.Not expr) = do
     val <- evalExpr expr
     case val of
         BoolV bool -> return $ BoolV (not bool)
         _ -> throwError "Negating non-boolean value"
 
-evalExpr (AbsLatte.EMul expr1 AbsLatte.Times expr2) = evalBinOp expr1 expr2 (*)
-evalExpr (AbsLatte.EMul expr1 AbsLatte.Div expr2) = evalBinOp expr1 expr2 div
-evalExpr (AbsLatte.EMul expr1 AbsLatte.Mod expr2) = evalBinOp expr1 expr2 mod
-evalExpr (AbsLatte.EAdd expr1 AbsLatte.Plus expr2) = evalBinOp expr1 expr2 (+)
-evalExpr (AbsLatte.EAdd expr1 AbsLatte.Minus expr2) = evalBinOp expr1 expr2 (-)
+evalExpr (AbsLatte.EAnd expr1 expr2) = evalBoolOp expr1 expr2 (&&)
+evalExpr (AbsLatte.EOr expr1 expr2) = evalBoolOp expr1 expr2 (||)
 
-evalBinOp :: AbsLatte.Expr -> AbsLatte.Expr -> (Integer -> Integer -> Integer) -> Eval Val
-evalBinOp exp1 exp2 f = do
+evalExpr (AbsLatte.Neg expr) = do
+    val <- evalExpr expr
+    case val of
+        IntV int -> return $ IntV (-int)
+        _ -> throwError "Negating non-integer value"
+
+evalExpr (AbsLatte.EMul expr1 AbsLatte.Times expr2) = evalIntArithmeticOp expr1 expr2 (*)
+evalExpr (AbsLatte.EMul expr1 AbsLatte.Div expr2) = evalIntArithmeticOp expr1 expr2 div
+evalExpr (AbsLatte.EMul expr1 AbsLatte.Mod expr2) = evalIntArithmeticOp expr1 expr2 mod
+evalExpr (AbsLatte.EAdd expr1 AbsLatte.Plus expr2) = evalIntArithmeticOp expr1 expr2 (+)
+evalExpr (AbsLatte.EAdd expr1 AbsLatte.Minus expr2) = evalIntArithmeticOp expr1 expr2 (-)
+
+evalExpr (AbsLatte.ERel expr1 AbsLatte.LTH expr2) = evalIntRelOp expr1 expr2 (<)
+evalExpr (AbsLatte.ERel expr1 AbsLatte.LE expr2) = evalIntRelOp expr1 expr2 (<=)
+evalExpr (AbsLatte.ERel expr1 AbsLatte.GTH expr2) = evalIntRelOp expr1 expr2 (>)
+evalExpr (AbsLatte.ERel expr1 AbsLatte.GE expr2) = evalIntRelOp expr1 expr2 (>=)
+evalExpr (AbsLatte.ERel expr1 AbsLatte.EQU expr2) = evalIntRelOp expr1 expr2 (==)
+evalExpr (AbsLatte.ERel expr1 AbsLatte.NE expr2) = evalIntRelOp expr1 expr2 (/=)
+
+evalBoolOp :: AbsLatte.Expr -> AbsLatte.Expr -> (Bool -> Bool -> Bool) -> Eval Val
+evalBoolOp expr1 expr2 op = do
+    val1 <- evalExpr expr1
+    val2 <- evalExpr expr2
+    case (val1, val2) of
+        (BoolV bool1, BoolV bool2) -> return $ BoolV (op bool1 bool2)
+        _ -> throwError "Non-boolean value in boolean operation"
+
+evalIntArithmeticOp :: AbsLatte.Expr -> AbsLatte.Expr -> (Integer -> Integer -> Integer) -> Eval Val
+evalIntArithmeticOp exp1 exp2 f = do
     val1 <- evalExpr exp1
     val2 <- evalExpr exp2
     case (val1, val2) of
         (IntV int1, IntV int2) -> return $ IntV (f int1 int2)
         _ -> throwError "Invalid operands for binary operation"
 
+evalIntRelOp :: AbsLatte.Expr -> AbsLatte.Expr -> (Integer -> Integer -> Bool) -> Eval Val
+evalIntRelOp exp1 exp2 f = do
+    val1 <- evalExpr exp1
+    val2 <- evalExpr exp2
+    case (val1, val2) of
+        (IntV int1, IntV int2) -> return $ BoolV (f int1 int2)
+        _ -> throwError "Invalid operands for binary operation"
 
 getVarVal :: AbsLatte.Ident -> Eval Val
 getVarVal ident = do

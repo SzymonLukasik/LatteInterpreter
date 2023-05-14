@@ -19,13 +19,14 @@ extra-source-files:  CHANGELOG.md
 executable latte
   main-is:             Main.hs
   other-modules:       AbsLatte
-                       ErrM
                        Interpreter
+                       TypeChecker
+                       Common
+                       ErrM
                        LexLatte
                        ParLatte
                        PrintLatte
                        SkelLatte
-                    --    Typechecker
   -- other-extensions:
   build-depends:       base >=4.10
                ,       mtl
