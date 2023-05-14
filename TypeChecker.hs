@@ -82,6 +82,29 @@ typeCheckNonDeclStmt :: AbsLatte.Stmt -> TypeCheck ()
 typeCheckNonDeclStmt AbsLatte.Empty = return ()
 typeCheckNonDeclStmt (AbsLatte.BStmt (AbsLatte.Block stmts)) = typeCheckStmts stmts
 typeCheckNonDeclStmt (AbsLatte.Print _) = return ()
+typeCheckNonDeclStmt (AbsLatte.While expr stmt) = do
+    exprType <- typeCheckExpr expr
+    when (exprType /= AbsLatte.Bool) $ throwError $ "Type mismatch in while condition: Bool expected, " ++ show exprType ++ " found"
+    typeCheckStmt stmt
+    return ();
+typeCheckNonDeclStmt (AbsLatte.Cond expr stmt) = do
+    exprType <- typeCheckExpr expr
+    when (exprType /= AbsLatte.Bool) $ throwError $ "Type mismatch in if condition: Bool expected, " ++ show exprType ++ " found"
+    typeCheckStmt stmt
+    return ();
+typeCheckNonDeclStmt (AbsLatte.CondElse expr stmt1 stmt2) = do
+    exprType <- typeCheckExpr expr
+    when (exprType /= AbsLatte.Bool) $ throwError $ "Type mismatch in if condition: Bool expected, " ++ show exprType ++ " found"
+    typeCheckStmt stmt1
+    typeCheckStmt stmt2
+    return ();
+typeCheckNonDeclStmt (AbsLatte.SExp expr) = do
+    typeCheckExpr expr
+    return ();
+typeCheckNonDeclStmt (AbsLatte.Ass ident expr) = do
+    varType <- typeCheckExpr (AbsLatte.EVar ident)
+    exprType <- typeCheckExpr expr
+    when (varType /= exprType) $ throwError $ "Type mismatch in assignment: " ++ show varType ++ " expected " ++ show exprType ++ " found"
 
 typeCheckDeclStmt :: AbsLatte.Stmt -> TypeCheck TypeEnv
 typeCheckDeclStmt (AbsLatte.Decl t items) = do

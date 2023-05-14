@@ -16,6 +16,7 @@ import AbsLatte (Type)
 import TypeChecker
 
 import Common
+import qualified Data.Type.Bool as AbsLatte
 
 type Loc = Int
 
@@ -109,6 +110,31 @@ evalNonDeclStmt (AbsLatte.BStmt (AbsLatte.Block stmts) ) = evalStmts stmts
 evalNonDeclStmt (AbsLatte.Print expr) = do
     val <- evalExpr expr
     tell [show val]
+evalNonDeclStmt (AbsLatte.While expr stmt) = do
+    val <- evalExpr expr
+    case val of
+        BoolV True -> do
+            env <- evalStmt stmt
+            local (const env) (evalNonDeclStmt (AbsLatte.While expr stmt))
+        BoolV False -> return ()
+        _ -> error "While condition is not a boolean"
+evalNonDeclStmt (AbsLatte.Cond expr stmt) = do
+    val <- evalExpr expr
+    case val of
+        BoolV True -> void (evalStmt stmt)
+        BoolV False -> return ()
+        _ -> error "If condition is not a boolean"
+evalNonDeclStmt (AbsLatte.CondElse expr stmt1 stmt2) = do
+    val <- evalExpr expr
+    case val of
+        BoolV True -> void (evalStmt stmt1)
+        BoolV False -> void (evalStmt stmt2)
+        _ -> error "If condition is not a boolean"
+evalNonDeclStmt (AbsLatte.Ass ident expr) = do
+    loc <- getVarLoc ident
+    val <- evalExpr expr
+    modify (Store . insert loc val . _store)
+    return ();
 
 evalDeclStmt :: AbsLatte.Stmt -> Eval Env
 evalDeclStmt (AbsLatte.Decl _ items) = evalItems items

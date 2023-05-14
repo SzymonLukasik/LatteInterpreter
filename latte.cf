@@ -28,11 +28,11 @@ NoInit.    Item ::= Ident ;
 
 Init.      Item ::= Ident "=" Expr ;
 
-Break.     Stmt ::= "break" ;
+Break.     Stmt ::= "break" ";";
 
-Continue.  Stmt ::= "continue" ;
+Continue.  Stmt ::= "continue" ";";
 
-Yield.     Stmt ::= "yield" "(" Expr ")" ;
+Yield.     Stmt ::= "yield" "(" Expr ")" ";";
 
 separator nonempty Item "," ;
 
@@ -56,7 +56,7 @@ For.       Stmt ::= "for" Arg "in" Expr Block;
 
 SExp.      Stmt ::= Expr  ";" ;
 
-Print.     Stmt ::= "print" "(" Expr ")" ;
+Print.     Stmt ::= "print" "(" Expr ")" ";" ;
 
 -- Types ---------------------------------------------------
 
