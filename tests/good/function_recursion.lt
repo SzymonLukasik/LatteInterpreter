@@ -1,0 +1,32 @@
+
+void increaseUntil(int n)
+{
+    if (n < 10) {
+        print(n);
+        increaseUntil(n + 1);
+    }
+}
+
+
+
+int fibonacci(int n)
+{
+   if ( n == 0 ) {
+       return 0;
+   } else {
+       if (n == 1) {
+           return 1;
+       }
+       else {
+           return (fibonacci(n-1) + fibonacci(n-2));
+       }
+   }
+} 
+
+void main() {
+    increaseUntil(7);
+    increaseUntil(3);
+
+    print(fibonacci(19));
+
+}

@@ -1,0 +1,13 @@
+void incrementBy(int x, int y)
+{
+    x = x + y;
+}
+
+void main(){
+    int x = 0;
+    print(x);
+    incrementBy(x, 100);
+    print(x);
+    incrementBy(& x, 100);
+    print(x);
+}
