@@ -170,23 +170,27 @@ evalNonDeclStmt (AbsLatte.Ass ident expr) = do
     return Nothing
 
 evalDeclStmt :: AbsLatte.Stmt -> Eval Env
-evalDeclStmt (AbsLatte.Decl _ items) = evalItems items
+evalDeclStmt (AbsLatte.Decl t items) = evalItems t items
 
-evalItems :: [AbsLatte.Item] -> Eval Env
-evalItems [] = ask
-evalItems (item:items) = do
-    env <- evalItem item
-    local (const env) (evalItems items)
+evalItems :: Type -> [AbsLatte.Item] -> Eval Env
+evalItems _ [] = ask
+evalItems t (item:items) = do
+    env <- evalItem t item
+    local (const env) (evalItems t items)
 
-evalItem :: AbsLatte.Item -> Eval Env
-evalItem (AbsLatte.Init ident expr) = do
+evalItem :: Type -> AbsLatte.Item -> Eval Env
+evalItem _ (AbsLatte.Init ident expr) = do
     env <- ask
     val <- evalExpr expr
     newLoc <- newLoc
     let newEnv = Env $ insert ident newLoc (_env env)
     modify (Store . insert newLoc val . _store)
     return newEnv
-evalItem (AbsLatte.NoInit ident) = evalItem (AbsLatte.Init ident (AbsLatte.ELitInt 0))
+evalItem t (AbsLatte.NoInit ident) = evalItem t (AbsLatte.Init ident (case t of 
+        AbsLatte.Int -> AbsLatte.ELitInt 0
+        AbsLatte.Bool -> AbsLatte.ELitFalse
+        AbsLatte.Str -> AbsLatte.EString ""
+    ))
 
 evalExpr :: AbsLatte.Expr -> Eval Val
 evalExpr (AbsLatte.EVar ident) = getVarVal ident

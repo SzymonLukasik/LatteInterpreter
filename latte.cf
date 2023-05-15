@@ -52,7 +52,7 @@ CondElse.  Stmt ::= "if" "(" Expr ")" Stmt "else" Stmt  ;
 
 While.     Stmt ::= "while" "(" Expr ")" Stmt ;
 
-For.       Stmt ::= "for" Arg "in" Expr Block; 
+For.       Stmt ::= "for" Arg "=" Expr "to" Expr Block; 
 
 SExp.      Stmt ::= Expr  ";" ;
 
@@ -88,7 +88,13 @@ ELitTrue.  Expr6 ::= "true" ;
 
 ELitFalse. Expr6 ::= "false" ;
 
-EApp.      Expr6 ::= Ident "(" [Expr] ")" ;
+EApp.      Expr6 ::= Ident "(" [AppArg] ")" ;
+
+ValArg.    AppArg ::= Expr ;
+
+RefArg.    AppArg ::= "&" Ident ;
+
+separator AppArg "," ;
 
 Next.      Expr6 ::= "next" "(" Expr ")" ;
 
