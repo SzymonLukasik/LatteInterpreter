@@ -12,9 +12,8 @@ import Control.Monad.RWS.Lazy
 import Control.Monad.Except
 import qualified AbsLatte
 import qualified Data.IntMap as Map
-import AbsLatte (Type)
+import AbsLatte (Type, AppArg)
 
-import TypeChecker
 
 import Common
 import qualified Data.Type.Bool as AbsLatte
@@ -46,12 +45,17 @@ newLoc = do
     let loc = length $ _store store
     return loc
 
-insertFunctionArgVals :: [(AbsLatte.Ident, Val)] -> Eval Env
-insertFunctionArgVals [] = ask
-insertFunctionArgVals ((ident, val):args) = do
-    loc <- newLoc
-    modify (Store . insert loc val . _store)
-    local (Env . insert ident loc . _env) (insertFunctionArgVals args)
+insertFunctionArgs :: [(AbsLatte.Ident, AbsLatte.AppArg)] -> Eval Env
+insertFunctionArgs [] = ask
+insertFunctionArgs ((ident, arg):args) = case arg of
+        AbsLatte.ValArg expr -> do
+            val <- evalExpr expr
+            loc <- newLoc
+            modify (Store . insert loc val . _store)
+            local (Env . insert ident loc . _env) (insertFunctionArgs args)
+        AbsLatte.RefArg refIdent -> do
+            loc <- getVarLoc refIdent
+            local (Env . insert ident loc . _env) (insertFunctionArgs args)
 
 
 data Val    = IntV  Integer
@@ -191,13 +195,13 @@ evalExpr AbsLatte.ELitTrue = return $ BoolV True
 evalExpr AbsLatte.ELitFalse = return $ BoolV False
 evalExpr (AbsLatte.EString str) = return $ StrV str
 evalExpr (AbsLatte.ELambda args block) = asks (FnV (FnDef AbsLatte.Void args block))
-evalExpr (AbsLatte.EApp ident exprs) = do
-    vals <- mapM evalExpr exprs
+evalExpr (AbsLatte.EApp ident appArgs) = do
     fnVal <- getVarVal ident
     case fnVal of
         FnV (FnDef _ args (AbsLatte.Block stmts)) env -> do
             let idents = Prelude.map (\(AbsLatte.Arg _ ident) -> ident) args
-            newEnv <- insertFunctionArgVals (zip idents vals)
+            let identAppArgs = zip idents appArgs
+            newEnv <- insertFunctionArgs identAppArgs
             local (const newEnv) (do
                 maybeRet <- evalStmts stmts
                 case maybeRet of
@@ -274,3 +278,7 @@ getLocVal loc = do
     let maybeVal = Data.Map.lookup loc $ _store store
     when (isNothing maybeVal) $ throwError $ "Accessing undefined location " ++ show loc
     return $ fromJust maybeVal
+
+isValArg :: AbsLatte.AppArg -> Bool
+isValArg (AbsLatte.ValArg _) = True
+isValArg _ = False

@@ -8,7 +8,7 @@ import Control.Monad.Reader
 import Control.Monad.Except
 import qualified AbsLatte
 import qualified Data.IntMap as Map
-import AbsLatte (Type)
+import AbsLatte (Type, AppArg)
 
 import Common
 import Control.Monad.RWS (MonadState(get))
@@ -151,23 +151,24 @@ typeCheckExpr AbsLatte.ELitInt{} = return AbsLatte.Int
 typeCheckExpr AbsLatte.ELitTrue{} = return AbsLatte.Bool
 typeCheckExpr AbsLatte.ELitFalse{} = return AbsLatte.Bool
 typeCheckExpr AbsLatte.EString{} = return AbsLatte.Str
--- typeCheckExpr (AbsLatte.ELambda t args (AbsLatte.Block stmts)) = do
+-- typeCheckExpr (AbsLatte.ELambda args (AbsLatte.Block stmts)) = do
 --     env <- ask
---     let fnEnv = getFunctionTypeEnv t args env
---     local (const fnEnv) $ typeCheckStmts stmts
 --     let argTypes = Prelude.map (\(AbsLatte.Arg t _) -> t) args
---     let fnType = AbsLatte.Fn t argTypes
+--     let lambdaEnv = insertFunctionArgs args env
+--     local (const lambdaEnv) (typeCheckStmts stmts)
+--     retType <- local (const lambdaEnv) (getStmtsReturnType stmts)    
+--     let fnType = AbsLatte.Fn retType argTypes
 --     return fnType
 
-typeCheckExpr (AbsLatte.EApp ident exprs) = do
+typeCheckExpr (AbsLatte.EApp ident args) = do
     env <- ask
     let maybeType = Data.Map.lookup ident $ types env
     when (isNothing maybeType) $ throwError $ "Function " ++ show ident ++ " not defined"
     let varType = fromJust maybeType
     unless (isFnType varType) $ throwError $ "Variable " ++ show ident ++ " is not a function"
     let (AbsLatte.Fn returnType argTypes) = varType
-    when (length exprs /= length argTypes) $ throwError $ "Wrong number of arguments in function call: " ++ show ident
-    argTypes' <- mapM typeCheckExpr exprs
+    when (length args /= length argTypes) $ throwError $ "Wrong number of arguments in function call: " ++ show ident
+    argTypes' <- mapM typeCheckAppArg args
     mapM_ (\(t1, t2) -> when (t1 /= t2) $ throwError $ "Type mismatch in function call: " ++ show ident) $ zip argTypes argTypes'
     return returnType
 
@@ -195,6 +196,16 @@ typeCheckOp op argType resType expr1 expr2 = do
     when (exprType1 /= argType || exprType2 /= argType) $ throwError $ "Type mismatch in : " ++ show expr1 ++ " " ++ show op ++ " " ++ show expr2
     return resType
 
+getStmtsReturnType :: [AbsLatte.Stmt] -> TypeCheck Type
+getStmtsReturnType [] = return AbsLatte.Void
+getStmtsReturnType (stmt:stmts) = do
+    stmtType <- getStmtReturnType stmt
+    if stmtType /= AbsLatte.Void then return stmtType else getStmtsReturnType stmts
+
+getStmtReturnType :: AbsLatte.Stmt -> TypeCheck Type
+getStmtReturnType (AbsLatte.Ret expr) = typeCheckExpr expr
+getStmtReturnType _ = return AbsLatte.Void
+
 isFnType :: Type -> Bool
 isFnType (AbsLatte.Fn _ _) = True
 isFnType _ = False
@@ -202,3 +213,12 @@ isFnType _ = False
 getFnType :: Type -> Maybe Type
 getFnType (AbsLatte.Fn t _) = Just t
 getFnType _ = Nothing
+
+typeCheckAppArg :: AbsLatte.AppArg -> TypeCheck Type
+typeCheckAppArg (AbsLatte.ValArg expr) = typeCheckExpr expr
+typeCheckAppArg (AbsLatte.RefArg ident) = do
+    env <- ask
+    let maybeType = Data.Map.lookup ident $ types env
+    when (isNothing maybeType) $ throwError $ "Variable " ++ show ident ++ " not defined"
+    let varType = fromJust maybeType
+    return varType
