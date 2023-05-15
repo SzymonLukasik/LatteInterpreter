@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use newtype instead of data" #-}
+{-# HLINT ignore "Use lambda-case" #-}
 
 module Interpreter where
 
@@ -17,6 +18,7 @@ import TypeChecker
 
 import Common
 import qualified Data.Type.Bool as AbsLatte
+import qualified GHC.Generics as AbsLatte
 
 type Loc = Int
 
@@ -44,19 +46,27 @@ newLoc = do
     let loc = length $ _store store
     return loc
 
+insertFunctionArgVals :: [(AbsLatte.Ident, Val)] -> Eval Env
+insertFunctionArgVals [] = ask
+insertFunctionArgVals ((ident, val):args) = do
+    loc <- newLoc
+    modify (Store . insert loc val . _store)
+    local (Env . insert ident loc . _env) (insertFunctionArgVals args)
+
+
 data Val    = IntV  Integer
             | BoolV Bool
             | StrV String
             | FnV FnDef Env
+            | VoidV
             deriving (Show)
 
 data FnDef = FnDef AbsLatte.Type [AbsLatte.Arg] AbsLatte.Block deriving (Show)
 
 type Eval = ExceptT String (RWS Env [String] Store)
 
-data RetType = Break | Continue | Return Val
-
-type RetVal = Maybe RetType
+data RetVal = Break | Continue | Return Val
+    deriving (Show)
 
 runEval :: Env -> Store -> Eval a -> (Either String a, Store, [String])
 runEval env store eval = runRWS (runExceptT eval) env store
@@ -77,7 +87,7 @@ evalProgram (AbsLatte.Program topDefs) = do
 evalMain :: Env -> Store -> Eval ()
 evalMain env store = local (const env) ( do
         ~(FnV (FnDef _ _  (AbsLatte.Block stmts)) mainEnv) <- getVarVal (AbsLatte.Ident "main")
-        local (const mainEnv) (evalStmts stmts)
+        local (const mainEnv) (void $ evalStmts stmts)
     )
 
 evalTopDefs :: [AbsLatte.TopDef] -> Eval Env
@@ -95,46 +105,65 @@ evalTopDef (AbsLatte.FnDef retType ident args block) = do
     modify (Store . insert newLoc (FnV fnDef newEnv) . _store)
     return newEnv
 
-evalStmts :: [AbsLatte.Stmt] -> Eval ()
-evalStmts [] = return ()
+evalStmts :: [AbsLatte.Stmt] -> Eval (Maybe RetVal)
+evalStmts [] = return Nothing
 evalStmts (stmt:stmts) = do
-    env <- evalStmt stmt
-    local (const env) (evalStmts stmts)
+    (env, maybeRet) <- evalStmt stmt
+    case maybeRet of
+        Just ret -> return (Just ret)
+        Nothing -> local (const env) (evalStmts stmts)
 
-evalStmt :: AbsLatte.Stmt -> Eval Env
-evalStmt stmt = if isDeclStmt stmt then evalDeclStmt stmt else evalNonDeclStmt stmt >> ask
+evalStmt :: AbsLatte.Stmt -> Eval (Env, Maybe RetVal)
+evalStmt stmt = if isDeclStmt stmt
+                then evalDeclStmt stmt >>= \env -> return (env, Nothing)
+                else evalNonDeclStmt stmt >>= (\ret -> do 
+                    env <- ask
+                    return (env, ret)
+                    )
 
-evalNonDeclStmt :: AbsLatte.Stmt -> Eval ()
-evalNonDeclStmt AbsLatte.Empty = return ()
+evalNonDeclStmt :: AbsLatte.Stmt -> Eval (Maybe RetVal)
+evalNonDeclStmt AbsLatte.Empty = return Nothing
 evalNonDeclStmt (AbsLatte.BStmt (AbsLatte.Block stmts) ) = evalStmts stmts
 evalNonDeclStmt (AbsLatte.Print expr) = do
     val <- evalExpr expr
     tell [show val]
+    return Nothing
+evalNonDeclStmt (AbsLatte.Ret expr) = do
+    val <- evalExpr expr
+    return (Just (Return val))
+evalNonDeclStmt AbsLatte.Break = return (Just Break)
+evalNonDeclStmt AbsLatte.Continue = return (Just Continue)
 evalNonDeclStmt (AbsLatte.While expr stmt) = do
     val <- evalExpr expr
     case val of
         BoolV True -> do
-            env <- evalStmt stmt
-            local (const env) (evalNonDeclStmt (AbsLatte.While expr stmt))
-        BoolV False -> return ()
+            (env, maybeRet) <- evalStmt stmt
+            let continuation = local (const env) (evalNonDeclStmt (AbsLatte.While expr stmt))
+            case maybeRet of
+                Just Break -> return Nothing
+                Just Continue -> continuation
+                Just (Return val) -> return (Just (Return val))
+                Nothing -> continuation
+        BoolV False -> return Nothing
         _ -> error "While condition is not a boolean"
 evalNonDeclStmt (AbsLatte.Cond expr stmt) = do
     val <- evalExpr expr
     case val of
-        BoolV True -> void (evalStmt stmt)
-        BoolV False -> return ()
+        BoolV True -> evalStmt stmt >>= \(_, ret) -> return ret
+        BoolV False -> return Nothing
         _ -> error "If condition is not a boolean"
 evalNonDeclStmt (AbsLatte.CondElse expr stmt1 stmt2) = do
     val <- evalExpr expr
     case val of
-        BoolV True -> void (evalStmt stmt1)
-        BoolV False -> void (evalStmt stmt2)
+        BoolV True -> evalStmt stmt1 >>= \(_, ret) -> return ret
+        BoolV False -> evalStmt stmt2 >>= \(_, ret) -> return ret
         _ -> error "If condition is not a boolean"
+evalNonDeclStmt (AbsLatte.SExp expr) = evalExpr expr >> return Nothing
 evalNonDeclStmt (AbsLatte.Ass ident expr) = do
     loc <- getVarLoc ident
     val <- evalExpr expr
     modify (Store . insert loc val . _store)
-    return ();
+    return Nothing
 
 evalDeclStmt :: AbsLatte.Stmt -> Eval Env
 evalDeclStmt (AbsLatte.Decl _ items) = evalItems items
@@ -162,18 +191,19 @@ evalExpr AbsLatte.ELitTrue = return $ BoolV True
 evalExpr AbsLatte.ELitFalse = return $ BoolV False
 evalExpr (AbsLatte.EString str) = return $ StrV str
 evalExpr (AbsLatte.ELambda args block) = asks (FnV (FnDef AbsLatte.Void args block))
--- evalExpr (AbsLatte.EApp ident exprs) = do
---     ~(FnV (FnDef retType args (AbsLatte.Block stmts)) fnEnv) <- getVarVal ident
---     vals <- mapM evalExpr exprs
---     let newEnv = Env $ fromList $ zip (map (\(AbsLatte.Arg _ ident) -> ident) args) (map IntV vals)
---     local (const newEnv) (evalStmts stmts)
---     return $ case retType of
---         AbsLatte.Int -> IntV 0
---         AbsLatte.Bool -> BoolV False
---         AbsLatte.Str -> StrV ""
---         AbsLatte.Void -> IntV 0
---         _ -> error "Unknown return type"
-
+evalExpr (AbsLatte.EApp ident exprs) = do
+    vals <- mapM evalExpr exprs
+    fnVal <- getVarVal ident
+    case fnVal of
+        FnV (FnDef _ args (AbsLatte.Block stmts)) env -> do
+            let idents = Prelude.map (\(AbsLatte.Arg _ ident) -> ident) args
+            newEnv <- insertFunctionArgVals (zip idents vals)
+            local (const newEnv) (do
+                maybeRet <- evalStmts stmts
+                case maybeRet of
+                    Just (Return val) -> return val
+                    _ -> return VoidV
+                )
 evalExpr (AbsLatte.Not expr) = do
     val <- evalExpr expr
     case val of

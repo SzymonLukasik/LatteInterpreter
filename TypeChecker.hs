@@ -33,8 +33,15 @@ insertCurrentReturnType t env = env {
     currentReturnType = t
 }
 
-getFunctionTypeEnv :: AbsLatte.Type -> [AbsLatte.Arg] -> TypeEnv -> TypeEnv
-getFunctionTypeEnv returnType args env = insertTypes (Prelude.map (\(AbsLatte.Arg t ident) -> (ident, t)) args) (insertCurrentReturnType returnType env)
+insertFunctionArgs :: [AbsLatte.Arg] -> TypeEnv -> TypeEnv
+insertFunctionArgs args = insertTypes (Prelude.map (\(AbsLatte.Arg t ident) -> (ident, t)) args)
+
+insertFunction :: AbsLatte.Ident -> Type -> [AbsLatte.Arg] -> TypeEnv -> TypeEnv
+insertFunction ident returnType args = insertType ident (AbsLatte.Fn returnType argTypes) . insertFunctionArgs args
+    where argTypes = Prelude.map (\(AbsLatte.Arg t _) -> t) args
+
+getFunctionTypeEnv :: AbsLatte.Ident -> AbsLatte.Type -> [AbsLatte.Arg] -> TypeEnv -> TypeEnv
+getFunctionTypeEnv ident returnType args = insertCurrentReturnType returnType . insertFunction ident returnType args . insertFunctionArgs args
 
 initTypeEnv :: TypeEnv
 initTypeEnv = TypeEnv {
@@ -62,11 +69,11 @@ typeCheckTopDefs (topDef:topDefs) = do
 typeCheckTopDef :: AbsLatte.TopDef -> TypeCheck TypeEnv
 typeCheckTopDef (AbsLatte.FnDef t ident args (AbsLatte.Block stmts)) = do
     env <- ask
-    let fnEnv = getFunctionTypeEnv t args env
+    let fnEnv = getFunctionTypeEnv ident t args env
     local (const fnEnv) $ typeCheckStmts stmts
     let argTypes = Prelude.map (\(AbsLatte.Arg t _) -> t) args
     let fnType = AbsLatte.Fn t argTypes
-    let newEnv = insertType ident fnType initTypeEnv
+    let newEnv = insertType ident fnType env
     return newEnv
 
 typeCheckStmts :: [AbsLatte.Stmt] -> TypeCheck ()
@@ -82,6 +89,12 @@ typeCheckNonDeclStmt :: AbsLatte.Stmt -> TypeCheck ()
 typeCheckNonDeclStmt AbsLatte.Empty = return ()
 typeCheckNonDeclStmt (AbsLatte.BStmt (AbsLatte.Block stmts)) = typeCheckStmts stmts
 typeCheckNonDeclStmt (AbsLatte.Print _) = return ()
+typeCheckNonDeclStmt (AbsLatte.Ret expr) = do
+    exprType <- typeCheckExpr expr
+    returnType <- asks currentReturnType
+    when (exprType /= returnType) $ throwError $ "Type mismatch in return statement: " ++ show returnType ++ " expected, " ++ show exprType ++ " found"
+typeCheckNonDeclStmt AbsLatte.Break = return ()
+typeCheckNonDeclStmt AbsLatte.Continue = return ()
 typeCheckNonDeclStmt (AbsLatte.While expr stmt) = do
     exprType <- typeCheckExpr expr
     when (exprType /= AbsLatte.Bool) $ throwError $ "Type mismatch in while condition: Bool expected, " ++ show exprType ++ " found"
